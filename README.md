@@ -84,9 +84,10 @@ lyric-lily watch           # poll until Ctrl+C (proves the sync loop)
 ```bash
 lyric-lily ui                 # full-screen lyrics; q to quit
 lyric-lily ui --local-only    # no network (local .lrc only)
+lyric-lily ui --offset 0.75   # advance lyric timing by 0.75s
 ```
 
-Poll rate defaults to **5 Hz**; override with **`LYRIC_LILY_UI_POLL_HZ`** (e.g. `10` for snappier sync).
+Poll rate defaults to **5 Hz**; override with **`LYRIC_LILY_UI_POLL_HZ`** (e.g. `10` for snappier sync). If a lyric source is consistently early/late, calibrate with **`--offset SEC`** or **`LYRIC_LILY_SYNC_OFFSET_SEC`**. Positive values advance lyrics; negative values delay them.
 
 **Lyrics (M2 — local `.lrc` first, then syncedlyrics / LRCLIB-style)**
 

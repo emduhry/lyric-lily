@@ -6,8 +6,8 @@ from typing import ClassVar
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, VerticalScroll
-from textual.widgets import Footer, Static
+from textual.containers import Container
+from textual.widgets import Static
 
 from lyric_lily.lyrics import resolve_lyrics
 from lyric_lily.lyrics.types import LyricResolveResult
@@ -18,10 +18,11 @@ from lyric_lily.now_playing import (
     PlaybackSnapshot,
     default_backend,
 )
+from lyric_lily.ui.render import render_lyrics_window
 
 
-def run_ui(*, local_only: bool) -> int:
-    LyricLilyApp(local_only=local_only).run()
+def run_ui(*, local_only: bool, sync_offset_sec: float = 0.0) -> int:
+    LyricLilyApp(local_only=local_only, sync_offset_sec=sync_offset_sec).run()
     return 0
 
 
@@ -34,23 +35,28 @@ class LyricLilyApp(App[None]):
     ]
 
     CSS = """
-    Screen { align: center middle; }
+    Screen {
+        align: center middle;
+        background: transparent;
+    }
     #panel {
         width: 90%;
         max-width: 100;
-        height: 90%;
-        border: round $accent;
-        padding: 1 2;
-        background: $surface;
+        height: auto;
+        max-height: 90%;
+        padding: 1 3;
+        background: transparent;
     }
-    #meta { margin-bottom: 1; color: $text-muted; }
-    #source { margin-top: 1; color: $text-muted; height: auto; }
+    #meta { margin-bottom: 2; color: rgb(145, 136, 158); }
+    #lyrics { height: auto; }
+    #source { margin-top: 1; color: rgb(84, 78, 96); height: 1; }
     #error { color: $error; margin-bottom: 1; }
     """
 
-    def __init__(self, *, local_only: bool) -> None:
+    def __init__(self, *, local_only: bool, sync_offset_sec: float = 0.0) -> None:
         super().__init__()
         self._local_only = local_only
+        self._sync_offset_sec = sync_offset_sec
         self._backend: NowPlayingBackend | None = None
         self._backend_error: str | None = None
         self._track_key: tuple[str | None, str | None] | None = None
@@ -63,10 +69,8 @@ class LyricLilyApp(App[None]):
         with Container(id="panel"):
             yield Static("", id="error")
             yield Static("", id="meta")
-            with VerticalScroll(id="scroll"):
-                yield Static("", id="lyrics")
+            yield Static("", id="lyrics")
             yield Static("", id="source")
-        yield Footer()
 
     def on_mount(self) -> None:
         try:
@@ -101,6 +105,14 @@ class LyricLilyApp(App[None]):
                 self._lines = parse_synced_lrc(self._resolve.lrc_text)
             else:
                 self._lines = []
+            try:
+                fresh_snap = self._backend.read()
+            except PlaybackUnavailableError:
+                pass
+            else:
+                if (fresh_snap.artist, fresh_snap.title) == key:
+                    snap = fresh_snap
+                    self._last_snap = fresh_snap
         self._apply_lyrics(snap)
 
     def _apply_error_only(self) -> None:
@@ -121,15 +133,18 @@ class LyricLilyApp(App[None]):
         src = self.query_one("#source", Static)
         err.update("")
 
-        bits = [snap.state.value.upper()]
+        bits = []
         if snap.artist:
             bits.append(snap.artist)
         if snap.title:
             bits.append(snap.title)
+        adjusted_position_sec = max(0.0, snap.position_sec + self._sync_offset_sec)
         pos = f"{snap.position_sec:.1f}s"
         if snap.duration_sec is not None:
             pos += f" / {snap.duration_sec:.1f}s"
-        bits.append(pos)
+        if self._sync_offset_sec:
+            pos += f" (lyrics {adjusted_position_sec:.1f}s)"
+        bits.append(f"{snap.state.value} · {pos}")
         meta.update(" · ".join(bits))
 
         res = self._resolve
@@ -138,7 +153,7 @@ class LyricLilyApp(App[None]):
             src.update("")
             return
 
-        src.update(res.headline + "\n" + res.detail)
+        src.update(res.headline)
 
         if not res.found or not res.lrc_text:
             lyrics.update(Text(res.headline, style="yellow"))
@@ -153,23 +168,8 @@ class LyricLilyApp(App[None]):
             )
             return
 
-        idx = line_index_at(self._lines, snap.position_sec)
-        text = Text()
-        margin = 6
-        if idx < 0:
-            start, end = 0, min(len(self._lines), 2 * margin + 1)
-            active = -1
-        else:
-            start = max(0, idx - margin)
-            end = min(len(self._lines), idx + margin + 1)
-            active = idx
-        for j in range(start, end):
-            _, line = self._lines[j]
-            if j == active:
-                text.append(line + "\n", style="bold bright_magenta")
-            else:
-                text.append(line + "\n", style="dim")
-        lyrics.update(text)
+        idx = line_index_at(self._lines, adjusted_position_sec)
+        lyrics.update(render_lyrics_window(self._lines, idx))
 
     def action_quit(self) -> None:
         self.exit()

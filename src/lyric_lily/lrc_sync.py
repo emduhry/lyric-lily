@@ -6,25 +6,39 @@ from typing import Final
 
 # [m:ss] or [m:ss.xx] or [mm:ss.xx] — lyric line (not [ar:...] metadata)
 _SYNC_LINE: Final[re.Pattern[str]] = re.compile(
-    r"^\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.*)\s*$"
+    r"\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]"
+)
+_OFFSET_LINE: Final[re.Pattern[str]] = re.compile(
+    r"^\[offset:\s*([+-]?\d+(?:\.\d+)?)\s*\]\s*$",
+    re.IGNORECASE,
 )
 
 
 def parse_synced_lrc(lrc_text: str) -> list[tuple[float, str]]:
     """Return ordered (seconds_from_start, lyric_text) for standard LRC timestamp lines."""
     out: list[tuple[float, str]] = []
+    offset_sec = 0.0
     for raw in lrc_text.splitlines():
-        m = _SYNC_LINE.match(raw.strip())
-        if not m:
+        line = raw.strip()
+        offset_match = _OFFSET_LINE.match(line)
+        if offset_match:
+            offset_sec = float(offset_match.group(1)) / 1000.0
             continue
-        mins, secs, frac, text = m.group(1), m.group(2), m.group(3), m.group(4)
-        t = int(mins) * 60 + int(secs)
-        if frac is not None:
-            pad = frac.ljust(3, "0")[:3]
-            t += int(pad) / 1000.0
+
+        matches = list(_SYNC_LINE.finditer(line))
+        if not matches:
+            continue
+
+        text = line[matches[-1].end() :].strip()
         if text:
-            out.append((float(t), text))
-    return out
+            for m in matches:
+                mins, secs, frac = m.group(1), m.group(2), m.group(3)
+                t = int(mins) * 60 + int(secs) + offset_sec
+                if frac is not None:
+                    pad = frac.ljust(3, "0")[:3]
+                    t += int(pad) / 1000.0
+                out.append((max(0.0, float(t)), text))
+    return sorted(out, key=lambda item: item[0])
 
 
 def line_index_at(lines: list[tuple[float, str]], position_sec: float) -> int:

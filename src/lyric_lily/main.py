@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 
@@ -10,6 +11,7 @@ from rich.table import Table
 
 from lyric_lily import __version__
 from lyric_lily.lyrics import resolve_lyrics
+from lyric_lily.lrc_sync import line_index_at, parse_synced_lrc
 from lyric_lily.now_playing import (
     PlaybackUnavailableError,
     PlaybackSnapshot,
@@ -91,7 +93,41 @@ def _lrc_preview(text: str, max_lines: int = 20) -> str:
     return "\n".join(lines[:max_lines]) + f"\n… ({tail} more lines; use --full)"
 
 
-def cmd_lyrics(*, full: bool, json_out: bool, local_only: bool) -> int:
+def _sync_debug_table(
+    snap: PlaybackSnapshot,
+    lrc_text: str,
+    *,
+    sync_offset_sec: float,
+) -> Table:
+    lines = parse_synced_lrc(lrc_text)
+    adjusted_position_sec = max(0.0, snap.position_sec + sync_offset_sec)
+    active = line_index_at(lines, adjusted_position_sec)
+    t = Table(show_header=False, box=None, padding=(0, 1))
+    t.add_column(style="dim")
+    t.add_column()
+    t.add_row("player position", f"{snap.position_sec:.3f}s")
+    t.add_row("lyric position", f"{adjusted_position_sec:.3f}s")
+    t.add_row("offset", f"{sync_offset_sec:+.3f}s")
+    t.add_row("parsed lines", str(len(lines)))
+    if active >= 0:
+        ts, text = lines[active]
+        t.add_row("active", f"{active}: [{ts:.2f}s] {text}")
+    else:
+        t.add_row("active", "(before first parsed line)")
+    for index in range(max(0, active + 1), min(len(lines), max(0, active + 1) + 5)):
+        ts, text = lines[index]
+        t.add_row("next", f"{index}: [{ts:.2f}s] {text}")
+    return t
+
+
+def cmd_lyrics(
+    *,
+    full: bool,
+    json_out: bool,
+    local_only: bool,
+    sync_debug: bool,
+    sync_offset_sec: float,
+) -> int:
     try:
         snap = default_backend().read()
     except NotImplementedError as e:
@@ -110,15 +146,27 @@ def cmd_lyrics(*, full: bool, json_out: bool, local_only: bool) -> int:
     out_console.print(result.headline, style=style)
     out_console.print(result.detail, style="dim")
     if result.lrc_text:
+        if sync_debug:
+            out_console.print(_sync_debug_table(snap, result.lrc_text, sync_offset_sec=sync_offset_sec))
         body = result.lrc_text if full else _lrc_preview(result.lrc_text)
         out_console.print(body)
     return 0 if result.found else 1
 
 
-def cmd_ui(local_only: bool) -> int:
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{name} must be a number, got {raw!r}")
+
+
+def cmd_ui(local_only: bool, sync_offset_sec: float) -> int:
     from lyric_lily.ui.app import run_ui
 
-    return run_ui(local_only=local_only)
+    return run_ui(local_only=local_only, sync_offset_sec=sync_offset_sec)
 
 
 def main() -> None:
@@ -173,6 +221,18 @@ def main() -> None:
         action="store_true",
         help="only search local .lrc files (no network)",
     )
+    p_lyrics.add_argument(
+        "--sync-debug",
+        action="store_true",
+        help="show parsed LRC timing around the current playback position",
+    )
+    p_lyrics.add_argument(
+        "--offset",
+        type=float,
+        default=_env_float("LYRIC_LILY_SYNC_OFFSET_SEC", 0.0),
+        metavar="SEC",
+        help="debug lyric timing with the same offset used by the UI",
+    )
 
     p_ui = sub.add_parser(
         "ui",
@@ -182,6 +242,13 @@ def main() -> None:
         "--local-only",
         action="store_true",
         help="only load local .lrc files (no network)",
+    )
+    p_ui.add_argument(
+        "--offset",
+        type=float,
+        default=_env_float("LYRIC_LILY_SYNC_OFFSET_SEC", 0.0),
+        metavar="SEC",
+        help="shift lyric timing by seconds; positive advances lyrics, negative delays them",
     )
 
     args = parser.parse_args()
@@ -198,10 +265,12 @@ def main() -> None:
                 full=args.full,
                 json_out=args.json,
                 local_only=args.local_only,
+                sync_debug=args.sync_debug,
+                sync_offset_sec=args.offset,
             )
         )
     if args.command == "ui":
-        sys.exit(cmd_ui(args.local_only))
+        sys.exit(cmd_ui(args.local_only, args.offset))
     parser.error(f"unknown command {args.command!r}")
 
 
