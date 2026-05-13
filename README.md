@@ -26,6 +26,39 @@ python3 -m pip install -e .
 lyric-lily
 ```
 
+**If `pip install` says “externally-managed-environment” (PEP 668)** while the prompt shows `(.venv)`, your shell is **not** using the venv’s Python (broken or stale venv — e.g. after renaming `my-lyrics-app` → `lyric-lily`). Check:
+
+```bash
+which python3    # should be .../lyric-lily/.venv/bin/python3
+```
+
+If it shows `/usr/bin/python3`, recreate the environment and reinstall:
+
+```bash
+cd ~/projects/lyric-lily
+deactivate 2>/dev/null || true
+rm -rf .venv
+python3 -m venv .venv
+source .venv/bin/activate
+which python3
+python3 -m pip install -U pip
+python3 -m pip install -e .
+```
+
+You can also call tools **without** activating, which avoids a broken `PATH`:
+
+```bash
+./.venv/bin/python -m pip install -e .
+./.venv/bin/lyric-lily status
+```
+
+### Run tests (optional)
+
+```bash
+python3 -m pip install -e ".[dev]"
+pytest -q
+```
+
 ### pipx (when you publish or install from a VCS URL)
 
 ```bash
@@ -36,13 +69,32 @@ pipx install .
 
 After install, the CLI is **`lyric-lily`**.
 
-### Commands (M1 — playerctl)
+### Commands
+
+**Now playing (playerctl)**
 
 ```bash
 lyric-lily status          # one Rich table snapshot
 lyric-lily status --json   # JSON for scripts
 lyric-lily watch           # poll until Ctrl+C (proves the sync loop)
 ```
+
+**Lyrics (M2 — local `.lrc` first, then syncedlyrics / LRCLIB-style)**
+
+```bash
+lyric-lily lyrics                 # headline + short LRC preview
+lyric-lily lyrics --full          # entire LRC
+lyric-lily lyrics --json          # JSON (includes `lrc_text` when found)
+lyric-lily lyrics --local-only    # no network; only disk
+```
+
+Local search looks for likely filenames (for example `Artist - Title.lrc`, `Title.lrc`) under, in order:
+
+- Paths in **`LYRIC_LILY_LRC_DIRS`** (same separator as `PATH` on your OS),
+- `$XDG_CONFIG_HOME/lyric-lily/lrc` (usually `~/.config/lyric-lily/lrc`),
+- `./lyrics` and `./.lyrics` (relative to the current working directory).
+
+Remote search uses the **[syncedlyrics](https://github.com/moehrenzahn/syncedlyrics)** package with **LRCLIB.net first**, then other built-in providers one at a time, so the app can say **“Lyrics from: …”** honestly. It does **not** use Spotify’s private in-client lyric API.
 
 If several MPRIS clients are running, pin one by name (as reported by `playerctl -l`):
 
@@ -69,7 +121,8 @@ Wallpaper and window transparency are owned by your **terminal emulator**. lyric
 
 ## Project layout
 
-- `src/lyric_lily/` — application package (`main` CLI, `now_playing/` backends)
+- `src/lyric_lily/` — application package (`main` CLI, `now_playing/`, `lyrics/`)
+- `src/lyric_lily/lyrics/` — resolve local `.lrc` then syncedlyrics (LRCLIB first)
 - `pyproject.toml` — package metadata and the `lyric-lily` console script
 
 ## GitHub milestones and issues
