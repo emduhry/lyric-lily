@@ -115,10 +115,17 @@ def cmd_lyrics(*, full: bool, json_out: bool, local_only: bool) -> int:
     return 0 if result.found else 1
 
 
+def cmd_ui(local_only: bool) -> int:
+    from lyric_lily.ui.app import run_ui
+
+    return run_ui(local_only=local_only)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="lyric-lily",
-        description="Terminal lyrics — Linux MPRIS (playerctl) + local/synced lyric lookup (M2).",
+        description="Terminal lyrics — Linux MPRIS (playerctl), lyric lookup, Textual UI.",
+        epilog="Tip: run `lyric-lily ui` for the live synced-lyrics screen (press q to quit).",
     )
     parser.add_argument(
         "--version",
@@ -167,6 +174,16 @@ def main() -> None:
         help="only search local .lrc files (no network)",
     )
 
+    p_ui = sub.add_parser(
+        "ui",
+        help="Textual synced lyrics view (polls playerctl; q to quit)",
+    )
+    p_ui.add_argument(
+        "--local-only",
+        action="store_true",
+        help="only load local .lrc files (no network)",
+    )
+
     args = parser.parse_args()
     if args.command is None:
         parser.print_help()
@@ -183,6 +200,8 @@ def main() -> None:
                 local_only=args.local_only,
             )
         )
+    if args.command == "ui":
+        sys.exit(cmd_ui(args.local_only))
     parser.error(f"unknown command {args.command!r}")
 
 

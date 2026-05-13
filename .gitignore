@@ -1,5 +1,8 @@
 .venv/
 .test-venv/
+# User cache / experiments (see README local search paths)
+lyrics/
+.lyrics/
 .m2-venv/
 __pycache__/
 *.pyc

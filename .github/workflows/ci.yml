@@ -33,6 +33,7 @@ jobs:
         run: |
           lyric-lily --version
           lyric-lily --help
+          lyric-lily ui --help
 
       - name: Byte-compile sources
         run: python -m compileall -q src/lyric_lily

@@ -79,6 +79,15 @@ lyric-lily status --json   # JSON for scripts
 lyric-lily watch           # poll until Ctrl+C (proves the sync loop)
 ```
 
+**Live UI (M3 — Textual, synced highlight)**
+
+```bash
+lyric-lily ui                 # full-screen lyrics; q to quit
+lyric-lily ui --local-only    # no network (local .lrc only)
+```
+
+Poll rate defaults to **5 Hz**; override with **`LYRIC_LILY_UI_POLL_HZ`** (e.g. `10` for snappier sync).
+
 **Lyrics (M2 — local `.lrc` first, then syncedlyrics / LRCLIB-style)**
 
 ```bash
@@ -122,7 +131,8 @@ Wallpaper and window transparency are owned by your **terminal emulator**. lyric
 ## Project layout
 
 - `src/lyric_lily/` — application package (`main` CLI, `now_playing/`, `lyrics/`)
-- `src/lyric_lily/lyrics/` — resolve local `.lrc` then syncedlyrics (LRCLIB first)
+- `src/lyric_lily/lrc_sync.py` — parse LRC timestamps, pick active line from playback position
+- `src/lyric_lily/ui/` — Textual `lyric-lily ui`
 - `pyproject.toml` — package metadata and the `lyric-lily` console script
 
 ## GitHub milestones and issues
@@ -144,9 +154,11 @@ GITHUB_REPOSITORY=youruser/lyric-lily ./scripts/bootstrap_github_plan.sh
 
 The script creates milestones **M0–M6** and matching issues (skips duplicates if you re-run it). See the script header for `GITHUB_REPOSITORY` when `gh repo view` cannot infer the repo.
 
+**Milestone issues (quick map):** **#1** M0 packaging, **#2** M1 playerctl, **#3** M2 lyric resolution, **#4** M3 Textual UI — use `Closes #N` in commit messages on `main` so the board stays accurate.
+
 ### Automation on GitHub
 
-- **CI** (`.github/workflows/ci.yml`): when you open a PR or push to `main`, GitHub runs a small check: install the package, run `lyric-lily --help`, and byte-compile sources. If something breaks, the PR shows a failed check so you notice before merging.
+- **CI** (`.github/workflows/ci.yml`): on push/PR to `main`, installs with dev deps, runs **`pytest`**, **`lyric-lily --help`** / **`lyric-lily ui --help`**, and **`compileall`** on `src/lyric_lily`.
 - **Dependabot** (`.github/dependabot.yml`): opens monthly PRs to bump GitHub Action versions and Python dependencies — optional hygiene, not urgent.
 - **Auto-closing issues**: GitHub closes an issue for you when a merged PR **description** (or title, or a commit on the default branch) contains `Closes #2` or `Fixes #2` (use the real issue number). The PR template reminds you to type that.
 
