@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lyric-lily"
+version = "0.1.0"
+description = "Terminal lyrics app for Linux (Spotify + MPRIS-first)."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "textual",
+  "rich",
+  "spotipy",
+  "syncedlyrics",
+]
+
+[project.scripts]
+lyric-lily = "lyric_lily.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
