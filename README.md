@@ -2,7 +2,7 @@
 
 Terminal lyrics app for **Linux** first: sync with your local player (MPRIS / `playerctl`), resolve lyrics from reliable sources (LRCLIB, syncedlyrics, files), and show them in the terminal with Textual.
 
-This is **not** a fork of [tacos-terminal-lyrics](https://github.com/tacosontitan/tacos-terminal-lyrics) (TTL). TTL is fine to skim for ideas (LRC handling, MPRIS patterns); lyric-lily aims for simpler onboarding, clearer errors, and room to grow.
+lyric-lily was inspired by tacos-terminal-lyrics, which I originally discovered through TikTok. The core idea is very similar — displaying synced lyrics in the terminal — but lyric-lily is more of a personal reinterpretation of the concept with a different UI style, architecture, and feature direction.
 
 ## Requirements
 
