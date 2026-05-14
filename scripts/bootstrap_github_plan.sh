@@ -45,7 +45,7 @@ milestone_number() {
     [[ "$t" == "$title" ]] || continue
     echo "$n"
     return 0
-  done < <(gh api "repos/${REPO}/milestones" --paginate --jq -r '.[] | "\(.title)\t\(.number)"')
+  done < <(gh api "repos/${REPO}/milestones" --paginate --jq '.[] | "\(.title)\t\(.number)"')
 }
 
 ensure_milestone() {
