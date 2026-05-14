@@ -85,15 +85,55 @@ lyric-lily watch           # poll until Ctrl+C (proves the sync loop)
 lyric-lily ui                 # full-screen lyrics; q to quit
 lyric-lily ui --local-only    # no network (local .lrc only)
 lyric-lily ui --offset 0.75   # advance lyric timing by 0.75s
+lyric-lily ui --theme vapor   # use a built-in or custom theme
 ```
 
 Poll rate defaults to **5 Hz**; override with **`LYRIC_LILY_UI_POLL_HZ`** (e.g. `10` for snappier sync). If a lyric source is consistently early/late, calibrate with **`--offset SEC`** or **`LYRIC_LILY_SYNC_OFFSET_SEC`**. Positive values advance lyrics; negative values delay them.
 
-Lyric transitions are animated by default (bouncy slide + active-line pop + fade gradient). Tweak with:
+Lyric transitions are animated by default with active-line pop, per-letter
+shimmer/dance, and a fade gradient. Tweak with:
 
-- **`LYRIC_LILY_ANIM_ENABLED`** — `0` disables the slide for slow terminals (pop + fade still apply).
-- **`LYRIC_LILY_ANIM_DURATION_SEC`** — slide duration in seconds (default `0.4`).
-- **`LYRIC_LILY_ANIM_EASING`** — Textual easing name (default `out_back`; try `out_bounce`, `out_cubic`).
+- **`LYRIC_LILY_ANIM_ENABLED`** — `0` disables the per-letter shimmer for slow terminals (pop + fade still apply).
+
+**Themes**
+
+Built-in themes ship with lyric-lily:
+
+```bash
+lyric-lily themes
+lyric-lily ui --theme vapor
+lyric-lily ui --theme mono
+lyric-lily ui --theme ember
+lyric-lily ui --theme tropic
+lyric-lily ui --theme pastel_kiss
+lyric-lily ui --theme lilys_pick
+lyric-lily ui --theme cedar
+lyric-lily ui --theme aero_sky
+lyric-lily ui --theme beach_peace
+lyric-lily ui --theme verbena
+```
+
+Set a default theme, or define custom themes, in
+`~/.config/lyric-lily/config.toml`:
+
+```toml
+[theme]
+active = "ember"
+
+[theme.custom.ocean]
+background = "#050E14"
+active_lyric = "#00FFFF"
+near_lyric = "#0099AA"
+far_lyric = "#003344"
+meta = "#4488AA"
+source = "#224455"
+```
+
+`--theme NAME` overrides the config default for that run. Custom themes can use
+any name; if a custom theme uses a built-in name, the custom values win. Theme
+colors must be `#RRGGBB` hex values. `background` is optional; if omitted,
+lyric-lily uses the default dark background. Terminal opacity is still controlled
+by your terminal emulator, such as Ghostty's `background-opacity`.
 
 **Lyrics (M2 — local `.lrc` first, then syncedlyrics / LRCLIB-style)**
 
@@ -112,12 +152,20 @@ Local search looks for likely filenames (for example `Artist - Title.lrc`, `Titl
 
 Remote search uses the **[syncedlyrics](https://github.com/moehrenzahn/syncedlyrics)** package with **LRCLIB.net first**, then other built-in providers one at a time, so the app can say **“Lyrics from: …”** honestly. It does **not** use Spotify’s private in-client lyric API.
 
-If several MPRIS clients are running, pin one by name (as reported by `playerctl -l`):
+If several MPRIS clients are running, lyric-lily reads whichever one `playerctl`
+selects by default. That can be Chrome/YouTube instead of Spotify, so the UI may
+show a video title and "No synced lyrics found." List available players and pin
+the one you want by name:
 
 ```bash
+playerctl -l
 export LYRIC_LILY_PLAYERCTL_PLAYER=spotify
-lyric-lily status
+lyric-lily ui
 ```
+
+Use the exact name from `playerctl -l` if it differs, for example
+`spotify`, `spotifyd`, or `chromium.instance1234`. The same setting also
+applies to `lyric-lily status`, `lyric-lily watch`, and `lyric-lily lyrics`.
 
 ### Classic venv + `requirements.txt`
 
@@ -131,9 +179,42 @@ python3 -m lyric_lily.main
 
 Prefer **`pip install -e .`** so the `lyric-lily` entrypoint stays in sync with the repo.
 
-## Transparency and theming
+## Transparency and terminal background
 
-Wallpaper and window transparency are owned by your **terminal emulator**. lyric-lily can still offer **lyric colors** (ANSI / truecolor), fonts (planned), and layout padding — without claiming OS-level background control.
+lyric-lily renders its Textual UI with transparent app backgrounds, but the
+actual window color and opacity are owned by your **terminal emulator** and your
+desktop compositor. If the UI appears as a solid black rectangle, that is the
+terminal profile background showing through.
+
+Recommended setup:
+
+1. Pick a lyric-lily theme:
+
+   ```bash
+   lyric-lily ui --theme ember
+   ```
+
+2. Set your terminal profile background color to black (`#000000`) or to a dark
+   color that matches the theme.
+3. Set terminal opacity/transparency in the terminal profile or config.
+
+Common terminal places to look:
+
+- GNOME Terminal / Tilix / MATE Terminal: profile preferences, Colors,
+  "Use transparent background" or transparency slider.
+- KDE Konsole: Settings, Edit Current Profile, Appearance, edit color scheme,
+  Background transparency.
+- Xfce Terminal: Preferences, Appearance, Background, Transparent background.
+- Kitty: set `background #000000` and `background_opacity 0.80` in
+  `~/.config/kitty/kitty.conf`.
+- Alacritty: set `window.opacity = 0.80` and theme colors in
+  `~/.config/alacritty/alacritty.toml`.
+- WezTerm: set `window_background_opacity = 0.80` and `colors.background`
+  in `~/.wezterm.lua`.
+
+lyric-lily themes control the app background plus current lyric, nearby lyrics,
+faded lyrics, metadata, and source text. Terminal opacity is still handled by
+the terminal.
 
 ## Project layout
 

@@ -4,6 +4,9 @@ import pytest
 
 from textual.app import App, ComposeResult
 
+from lyric_lily.now_playing.types import PlaybackSnapshot, PlayState
+from lyric_lily.themes import BUILTIN_THEMES
+from lyric_lily.ui.app import LyricLilyApp
 from lyric_lily.ui.lyric_view import LyricLine, LyricView, compute_slide_offset
 
 
@@ -51,14 +54,14 @@ def test_lyric_view_set_active_advances_window() -> None:
             view.set_active(0)
             await pilot.pause(0.05)
             rows = _visible_rows(view)
-            assert str(rows[0].render()).strip() == "line 0"
+            assert "line 0" in str(rows[0].render())
             assert rows[0].has_class("-active")
 
             view.set_active(2)
             for _ in range(20):
                 await pilot.pause(0.05)
             rows = _visible_rows(view)
-            assert str(rows[0].render()).strip() == "line 2"
+            assert "line 2" in str(rows[0].render())
             assert rows[0].has_class("-active")
             assert not rows[1].has_class("-active")
 
@@ -93,6 +96,46 @@ def test_lyric_view_respects_anim_disabled(monkeypatch: pytest.MonkeyPatch) -> N
             view.set_active(1)
             await pilot.pause()
             rows = _visible_rows(view)
-            assert str(rows[0].render()).strip() == "line 1"
+            assert "line 1" in str(rows[0].render())
 
     asyncio.run(scenario())
+
+
+def test_ui_local_clock_advances_when_player_position_is_stuck(monkeypatch: pytest.MonkeyPatch) -> None:
+    times = iter([10.0, 11.25])
+    monkeypatch.setattr("lyric_lily.ui.app.time.monotonic", lambda: next(times))
+    app = LyricLilyApp(local_only=True, theme=BUILTIN_THEMES["ember"])
+    snap = PlaybackSnapshot(
+        title="Song",
+        artist="Artist",
+        album=None,
+        position_sec=0.0,
+        duration_sec=30.0,
+        state=PlayState.STOPPED,
+        player_name="browser",
+    )
+
+    assert app._with_local_position_clock(snap).position_sec == 0.0
+    assert app._clock_estimated is False
+    assert app._with_local_position_clock(snap).position_sec == 1.25
+    assert app._clock_estimated is True
+
+
+def test_ui_local_clock_does_not_advance_paused_tracks(monkeypatch: pytest.MonkeyPatch) -> None:
+    times = iter([10.0, 12.0])
+    monkeypatch.setattr("lyric_lily.ui.app.time.monotonic", lambda: next(times))
+    app = LyricLilyApp(local_only=True, theme=BUILTIN_THEMES["ember"])
+    snap = PlaybackSnapshot(
+        title="Song",
+        artist="Artist",
+        album=None,
+        position_sec=4.0,
+        duration_sec=30.0,
+        state=PlayState.PAUSED,
+        player_name="browser",
+    )
+
+    assert app._with_local_position_clock(snap).position_sec == 4.0
+    assert app._clock_estimated is False
+    assert app._with_local_position_clock(snap).position_sec == 4.0
+    assert app._clock_estimated is False

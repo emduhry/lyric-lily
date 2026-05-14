@@ -57,7 +57,11 @@ def load_config(path: Path | None = None) -> AppConfig:
         return _default_config()
 
     theme_table = data.get("theme") or {}
+    if not isinstance(theme_table, dict):
+        theme_table = {}
     active = theme_table.get("active")
+    if active is not None and not isinstance(active, str):
+        active = None
 
     custom_root = theme_table.get("custom") or {}
     if not isinstance(custom_root, dict):

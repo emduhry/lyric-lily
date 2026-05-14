@@ -7,6 +7,7 @@ from textual.containers import Vertical
 from textual.geometry import Offset
 from textual.widgets import Static
 
+from lyric_lily.themes import BUILTIN_THEMES, DEFAULT_THEME, ThemePalette
 from lyric_lily.ui.render import lyric_color_for_distance, visible_lyric_window
 
 LyricLineData = tuple[float, str]
@@ -14,6 +15,7 @@ LyricLineData = tuple[float, str]
 _DEFAULT_MARGIN = 6
 _DEFAULT_LINE_HEIGHT = 2  # one row of text + one row of breathing space
 _POP_DURATION_SEC = 0.18
+_DANCE_INTERVAL_SEC = 0.12
 _SNAP_DELTA_THRESHOLD = 4  # skip slide for jumps larger than this
 
 
@@ -59,7 +61,7 @@ class LyricLine(Static):
 
     DEFAULT_CSS = """
     LyricLine {
-        height: 1;
+        height: 2;
         width: 100%;
         content-align: left middle;
         background: transparent;
@@ -75,10 +77,24 @@ class LyricLine(Static):
     }
     """
 
-    def set_distance(self, distance: int, *, active: bool) -> None:
+    def set_line(
+        self,
+        text: str,
+        *,
+        distance: int,
+        active: bool,
+        theme: ThemePalette,
+        dance_phase: int = 0,
+    ) -> None:
+        rendered = (
+            _render_dancing_text(text, theme=theme, phase=dance_phase)
+            if active
+            else Text(f"\n{text}")
+        )
+        self.update(rendered)
         self.set_class(active, "-active")
         # Drive the color via inline style so the CSS transition kicks in.
-        self.styles.color = lyric_color_for_distance(distance)
+        self.styles.color = lyric_color_for_distance(distance, theme)
 
     def pop(self) -> None:
         """Briefly flash brighter to emphasise a newly active line."""
@@ -86,8 +102,27 @@ class LyricLine(Static):
         self.set_timer(_POP_DURATION_SEC, lambda: self.remove_class("-pop"))
 
 
+def _render_dancing_text(text: str, *, theme: ThemePalette, phase: int) -> Text:
+    rendered = Text()
+    echo = Text()
+    for index, char in enumerate(text):
+        beat = (index + phase) % 6
+        if char.isspace():
+            echo.append(char)
+        elif beat == 0:
+            echo.append(char, style=f"bold {theme.active_lyric}")
+        elif beat in (1, 5):
+            echo.append(char, style=f"bold {theme.near_lyric}")
+        else:
+            echo.append(" ")
+    rendered.append_text(echo)
+    rendered.append("\n")
+    rendered.append(text, style=f"bold {theme.active_lyric}")
+    return rendered
+
+
 class LyricView(Vertical):
-    """Vertical column of lyric rows with bouncy slide + pop + fade gradient.
+    """Vertical column of lyric rows with active-line letter shimmer.
 
     The widget keeps a fixed pool of ``LyricLine`` rows mounted, then updates
     each row's text + distance on every ``set_active`` call. The pool stays
@@ -102,16 +137,21 @@ class LyricView(Vertical):
     }
     """
 
-    def __init__(self, *, margin: int = _DEFAULT_MARGIN, id: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        margin: int = _DEFAULT_MARGIN,
+        id: str | None = None,
+        theme: ThemePalette = BUILTIN_THEMES[DEFAULT_THEME],
+    ) -> None:
         super().__init__(id=id)
         self._margin = margin
+        self._theme = theme
         self._lines: list[LyricLineData] = []
         self._active_index: int = -1
         self._message: str | None = None
         self._anim_enabled: bool = _env_flag("LYRIC_LILY_ANIM_ENABLED", True)
-        self._anim_duration: float = max(0.05, _env_float("LYRIC_LILY_ANIM_DURATION_SEC", 0.4))
-        self._easing: str = os.environ.get("LYRIC_LILY_ANIM_EASING", "out_back") or "out_back"
-        self._line_height: int = _DEFAULT_LINE_HEIGHT
+        self._dance_phase: int = 0
         # Pool of lyric rows, sized for one active line + ``margin`` upcoming.
         self._rows: list[LyricLine] = [LyricLine("") for _ in range(margin + 1)]
         self._message_row: Static = Static("")
@@ -125,6 +165,8 @@ class LyricView(Vertical):
 
     def on_mount(self) -> None:
         self._refresh_rows()
+        if self._anim_enabled:
+            self.set_interval(_DANCE_INTERVAL_SEC, self._dance_tick)
 
     # ---- public API used by LyricLilyApp ------------------------------------
 
@@ -151,34 +193,16 @@ class LyricView(Vertical):
             return
         if index == self._active_index:
             return
-        previous = self._active_index
         self._active_index = index
 
         if not self.is_mounted:
             return
 
-        offset_y = (
-            compute_slide_offset(previous, index, line_height=self._line_height)
-            if self._anim_enabled
-            else 0
-        )
-
-        if offset_y != 0:
-            # Slide current rows upward, then swap content + reset offset.
-            self.offset = Offset(0, 0)
-            self.animate(
-                "offset",
-                value=Offset(0, offset_y),
-                duration=self._anim_duration,
-                easing=self._easing,
-                on_complete=self._after_slide,
-            )
-        else:
-            self._after_slide()
+        self._refresh_active_line()
 
     # ---- internals ----------------------------------------------------------
 
-    def _after_slide(self) -> None:
+    def _refresh_active_line(self) -> None:
         if not self.is_mounted:
             return
         self.offset = Offset(0, 0)
@@ -213,8 +237,13 @@ class LyricView(Vertical):
                 _, text = visible[offset]
                 # When ``active`` is -1 the song hasn't started; everyone is faded.
                 distance = abs((start + offset) - active) if active >= 0 else self._margin + 1
-                row.update(text)
-                row.set_distance(distance, active=(distance == 0 and active >= 0))
+                row.set_line(
+                    text,
+                    distance=distance,
+                    active=(distance == 0 and active >= 0),
+                    theme=self._theme,
+                    dance_phase=self._dance_phase,
+                )
                 row.display = True
             else:
                 row.update("")
@@ -225,3 +254,9 @@ class LyricView(Vertical):
             return
         # Active line is always the first row in the visible window.
         self._rows[0].pop()
+
+    def _dance_tick(self) -> None:
+        if not self._lines or self._message is not None or self._active_index < 0:
+            return
+        self._dance_phase = (self._dance_phase + 1) % 6
+        self._refresh_rows()

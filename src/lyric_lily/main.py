@@ -163,10 +163,30 @@ def _env_float(name: str, default: float) -> float:
         raise argparse.ArgumentTypeError(f"{name} must be a number, got {raw!r}")
 
 
-def cmd_ui(local_only: bool, sync_offset_sec: float) -> int:
+def cmd_ui(local_only: bool, sync_offset_sec: float, theme_name: str | None) -> int:
     from lyric_lily.ui.app import run_ui
 
-    return run_ui(local_only=local_only, sync_offset_sec=sync_offset_sec)
+    try:
+        return run_ui(
+            local_only=local_only,
+            sync_offset_sec=sync_offset_sec,
+            theme_name=theme_name,
+        )
+    except ValueError as e:
+        err_console.print(f"[red]{e}[/]")
+        return 2
+
+
+def cmd_themes() -> int:
+    from lyric_lily.themes import iter_themes_with_default
+
+    t = Table(show_header=True)
+    t.add_column("theme")
+    t.add_column("default", justify="center")
+    for name, is_default in iter_themes_with_default():
+        t.add_row(name, "yes" if is_default else "")
+    out_console.print(t)
+    return 0
 
 
 def main() -> None:
@@ -250,6 +270,16 @@ def main() -> None:
         metavar="SEC",
         help="shift lyric timing by seconds; positive advances lyrics, negative delays them",
     )
+    p_ui.add_argument(
+        "--theme",
+        metavar="NAME",
+        help="use a built-in or custom theme; overrides config default",
+    )
+
+    sub.add_parser(
+        "themes",
+        help="list built-in and custom themes",
+    )
 
     args = parser.parse_args()
     if args.command is None:
@@ -270,7 +300,9 @@ def main() -> None:
             )
         )
     if args.command == "ui":
-        sys.exit(cmd_ui(args.local_only, args.offset))
+        sys.exit(cmd_ui(args.local_only, args.offset, args.theme))
+    if args.command == "themes":
+        sys.exit(cmd_themes())
     parser.error(f"unknown command {args.command!r}")
 
 
