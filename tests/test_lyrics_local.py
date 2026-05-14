@@ -51,3 +51,28 @@ def test_local_lrc_preferred_before_remote(
     assert "local file" in r.headline
     assert r.lrc_text and "LOCAL_FIXTURE" in r.lrc_text
     assert called == []
+
+
+def test_spotify_advertisement_skips_lyric_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    snap = PlaybackSnapshot(
+        title="Advertisement",
+        artist="Spotify",
+        album=None,
+        position_sec=12.0,
+        duration_sec=30.0,
+        state=PlayState.PLAYING,
+        player_name="spotify",
+        track_id="spotify:ad:12345",
+        source_url="spotify:ad:12345",
+    )
+    called: list[str] = []
+
+    def _boom(term: str) -> tuple[str, str]:
+        called.append(term)
+        raise AssertionError("remote fetch must not run for Spotify ads")
+
+    monkeypatch.setattr("lyric_lily.lyrics.resolver.fetch_remote_lrc", _boom)
+    r = resolve_lyrics(snap, local_only=False)
+    assert not r.found
+    assert "Skipping lyric lookup" in r.headline
+    assert called == []

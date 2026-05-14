@@ -22,6 +22,8 @@ class PlaybackSnapshot:
     duration_sec: float | None
     state: PlayState
     player_name: str | None
+    track_id: str | None = None
+    source_url: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -32,4 +34,6 @@ class PlaybackSnapshot:
             "duration_sec": self.duration_sec,
             "state": self.state.value,
             "player_name": self.player_name,
+            "track_id": self.track_id,
+            "source_url": self.source_url,
         }

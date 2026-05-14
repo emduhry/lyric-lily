@@ -21,5 +21,11 @@ dev = ["pytest>=8"]
 [project.scripts]
 lyric-lily = "lyric_lily.main:main"
 
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
 [tool.setuptools.packages.find]
 where = ["src"]

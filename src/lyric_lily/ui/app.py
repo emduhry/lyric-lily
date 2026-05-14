@@ -59,7 +59,7 @@ class LyricLilyApp(App[None]):
         self._sync_offset_sec = sync_offset_sec
         self._backend: NowPlayingBackend | None = None
         self._backend_error: str | None = None
-        self._track_key: tuple[str | None, str | None] | None = None
+        self._track_key: tuple[str | None, str | None, str | None, str | None] | str | None = None
         self._resolve: LyricResolveResult | None = None
         self._lines: list[tuple[float, str]] = []
         self._last_snap: PlaybackSnapshot | None = None
@@ -97,7 +97,7 @@ class LyricLilyApp(App[None]):
 
         self._last_error = None
         self._last_snap = snap
-        key = (snap.artist, snap.title)
+        key = playback_track_key(snap)
         if key != self._track_key:
             self._track_key = key
             self._resolve = resolve_lyrics(snap, local_only=self._local_only)
@@ -110,7 +110,7 @@ class LyricLilyApp(App[None]):
             except PlaybackUnavailableError:
                 pass
             else:
-                if (fresh_snap.artist, fresh_snap.title) == key:
+                if playback_track_key(fresh_snap) == key:
                     snap = fresh_snap
                     self._last_snap = fresh_snap
         self._apply_lyrics(snap)
@@ -173,3 +173,15 @@ class LyricLilyApp(App[None]):
 
     def action_quit(self) -> None:
         self.exit()
+
+
+def playback_track_key(
+    snap: PlaybackSnapshot,
+) -> tuple[str | None, str | None, str | None, str | None] | str | None:
+    """
+    Prefer stable backend identifiers when available so skips/ads/remasters do
+    not get mistaken for the same track based only on title/artist text.
+    """
+    if snap.track_id:
+        return f"track:{snap.track_id}"
+    return (snap.player_name, snap.artist, snap.album, snap.title)

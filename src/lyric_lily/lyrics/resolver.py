@@ -21,6 +21,10 @@ def resolve_lyrics(
     """
     Prefer a local ``.lrc`` file, then LRCLIB / other syncedlyrics providers (synced only).
     """
+    skipped_reason = _skipped_search_reason(snap)
+    if skipped_reason is not None:
+        return skipped_reason
+
     term = search_term_from_snapshot(snap)
     if not term:
         return LyricResolveResult(
@@ -82,6 +86,35 @@ def resolve_lyrics(
             f"then syncedlyrics providers: {', '.join(l for l, _ in REMOTE_PROVIDERS)}.{extra}"
         ),
     )
+
+
+def _skipped_search_reason(snap: PlaybackSnapshot) -> LyricResolveResult | None:
+    player_name = (snap.player_name or "").strip().lower()
+    if player_name != "spotify":
+        return None
+
+    track_id = (snap.track_id or "").strip().lower()
+    source_url = (snap.source_url or "").strip().lower()
+    title = (snap.title or "").strip().lower()
+    artist = (snap.artist or "").strip().lower()
+
+    if track_id.startswith("spotify:ad:") or source_url.startswith("spotify:ad:"):
+        return LyricResolveResult(
+            found=False,
+            lrc_text=None,
+            headline="Skipping lyric lookup for Spotify advertisement playback.",
+            detail="MPRIS reported a Spotify ad item, so lyric-lily intentionally did not query local or remote lyric sources.",
+        )
+
+    if title == "advertisement" or artist == "advertisement":
+        return LyricResolveResult(
+            found=False,
+            lrc_text=None,
+            headline="Skipping lyric lookup for likely Spotify advertisement playback.",
+            detail="The current Spotify item is labeled as an advertisement, so lyric-lily intentionally did not query lyric sources.",
+        )
+
+    return None
 
 
 def _format_dirs(dirs: list[Path]) -> str:

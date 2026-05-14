@@ -115,6 +115,8 @@ class LinuxPlayerctlBackend:
         title = _strip_or_none(self._run_text("metadata", "title"))
         artist = _strip_or_none(self._run_text("metadata", "artist"))
         album = _strip_or_none(self._run_text("metadata", "album"))
+        track_id = _strip_or_none(self._run_text("metadata", "mpris:trackid"))
+        source_url = _strip_or_none(self._run_text("metadata", "xesam:url"))
         length_raw = self._run_text("metadata", "mpris:length")
         duration_sec = _parse_duration_sec(length_raw)
 
@@ -132,6 +134,8 @@ class LinuxPlayerctlBackend:
             duration_sec=duration_sec,
             state=state,
             player_name=player_name,
+            track_id=track_id,
+            source_url=source_url,
         )
 
 
