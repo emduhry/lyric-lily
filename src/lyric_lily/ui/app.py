@@ -6,8 +6,8 @@ from typing import ClassVar
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container
-from textual.widgets import Static
+from textual.containers import Container, VerticalScroll
+from textual.widgets import Footer, Static
 
 from lyric_lily.lyrics import resolve_lyrics
 from lyric_lily.lyrics.types import LyricResolveResult
@@ -37,19 +37,20 @@ class LyricLilyApp(App[None]):
     CSS = """
     Screen {
         align: center middle;
-        background: transparent;
+        background: $background;
     }
     #panel {
         width: 90%;
         max-width: 100;
-        height: auto;
-        max-height: 90%;
-        padding: 1 3;
-        background: transparent;
+        height: 90%;
+        border: round $accent;
+        padding: 1 2;
+        background: $surface;
     }
-    #meta { margin-bottom: 2; color: rgb(145, 136, 158); }
+    #meta { margin-bottom: 1; color: $text-muted; }
+    #scroll { height: 1fr; }
     #lyrics { height: auto; }
-    #source { margin-top: 1; color: rgb(84, 78, 96); height: 1; }
+    #source { margin-top: 1; color: $text-muted; height: auto; }
     #error { color: $error; margin-bottom: 1; }
     """
 
@@ -69,8 +70,10 @@ class LyricLilyApp(App[None]):
         with Container(id="panel"):
             yield Static("", id="error")
             yield Static("", id="meta")
-            yield Static("", id="lyrics")
+            with VerticalScroll(id="scroll"):
+                yield Static("", id="lyrics")
             yield Static("", id="source")
+        yield Footer()
 
     def on_mount(self) -> None:
         try:
@@ -94,26 +97,35 @@ class LyricLilyApp(App[None]):
             self._last_snap = None
             self._apply_error_only()
             return
+        except Exception as e:
+            self._last_error = f"Could not read playback state: {type(e).__name__}: {e}"
+            self._last_snap = None
+            self._apply_error_only()
+            return
 
-        self._last_error = None
-        self._last_snap = snap
-        key = playback_track_key(snap)
-        if key != self._track_key:
-            self._track_key = key
-            self._resolve = resolve_lyrics(snap, local_only=self._local_only)
-            if self._resolve.found and self._resolve.lrc_text:
-                self._lines = parse_synced_lrc(self._resolve.lrc_text)
-            else:
-                self._lines = []
-            try:
-                fresh_snap = self._backend.read()
-            except PlaybackUnavailableError:
-                pass
-            else:
-                if playback_track_key(fresh_snap) == key:
-                    snap = fresh_snap
-                    self._last_snap = fresh_snap
-        self._apply_lyrics(snap)
+        try:
+            self._last_error = None
+            self._last_snap = snap
+            key = playback_track_key(snap)
+            if key != self._track_key:
+                self._track_key = key
+                self._resolve = resolve_lyrics(snap, local_only=self._local_only)
+                if self._resolve.found and self._resolve.lrc_text:
+                    self._lines = parse_synced_lrc(self._resolve.lrc_text)
+                else:
+                    self._lines = []
+                try:
+                    fresh_snap = self._backend.read()
+                except PlaybackUnavailableError:
+                    pass
+                else:
+                    if playback_track_key(fresh_snap) == key:
+                        snap = fresh_snap
+                        self._last_snap = fresh_snap
+            self._apply_lyrics(snap)
+        except Exception as e:
+            self._last_error = f"UI update failed: {type(e).__name__}: {e}"
+            self._apply_error_only()
 
     def _apply_error_only(self) -> None:
         err = self.query_one("#error", Static)
