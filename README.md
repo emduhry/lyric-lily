@@ -89,6 +89,12 @@ lyric-lily ui --offset 0.75   # advance lyric timing by 0.75s
 
 Poll rate defaults to **5 Hz**; override with **`LYRIC_LILY_UI_POLL_HZ`** (e.g. `10` for snappier sync). If a lyric source is consistently early/late, calibrate with **`--offset SEC`** or **`LYRIC_LILY_SYNC_OFFSET_SEC`**. Positive values advance lyrics; negative values delay them.
 
+Lyric transitions are animated by default (bouncy slide + active-line pop + fade gradient). Tweak with:
+
+- **`LYRIC_LILY_ANIM_ENABLED`** — `0` disables the slide for slow terminals (pop + fade still apply).
+- **`LYRIC_LILY_ANIM_DURATION_SEC`** — slide duration in seconds (default `0.4`).
+- **`LYRIC_LILY_ANIM_EASING`** — Textual easing name (default `out_back`; try `out_bounce`, `out_cubic`).
+
 **Lyrics (M2 — local `.lrc` first, then syncedlyrics / LRCLIB-style)**
 
 ```bash

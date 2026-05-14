@@ -54,6 +54,31 @@ def _parse_duration_sec(raw: str | None) -> float | None:
     return None
 
 
+def _parse_metadata_fields(raw: str) -> tuple[str | None, str | None, str | None, float | None, str | None, str | None]:
+    fields = raw.splitlines()
+    title = _strip_or_none(fields[0] if len(fields) > 0 else None)
+    artist = _strip_or_none(fields[1] if len(fields) > 1 else None)
+    album = _strip_or_none(fields[2] if len(fields) > 2 else None)
+    duration_sec = _parse_duration_sec(fields[3] if len(fields) > 3 else None)
+    track_id = _strip_or_none(fields[4] if len(fields) > 4 else None)
+    source_url = _strip_or_none(fields[5] if len(fields) > 5 else None)
+    return title, artist, album, duration_sec, track_id, source_url
+
+
+def _looks_like_spotify_ad(
+    player_name: str | None,
+    title: str | None,
+    artist: str | None,
+    album: str | None,
+) -> bool:
+    if player_name is None or "spotify" not in player_name.lower():
+        return False
+    title_key = (title or "").strip().lower()
+    artist_key = (artist or "").strip().lower()
+    album_key = (album or "").strip().lower()
+    return title_key in {"advertisement", "spotify"} and not artist_key and not album_key
+
+
 @dataclass(slots=True)
 class LinuxPlayerctlBackend:
     """Linux MPRIS via the ``playerctl`` CLI (install from distro packages)."""
@@ -64,6 +89,10 @@ class LinuxPlayerctlBackend:
     def __post_init__(self) -> None:
         if self.player is None:
             self.player = os.environ.get("LYRIC_LILY_PLAYERCTL_PLAYER") or None
+        if self.player is None:
+            listed = _list_players()
+            if len(listed) == 1:
+                self.player = listed[0]
 
     def _cmd(self, *args: str) -> list[str]:
         out = ["playerctl"]
@@ -112,19 +141,19 @@ class LinuxPlayerctlBackend:
         status_raw = self._run_text("status")
         state = _parse_status(status_raw)
 
-        title = _strip_or_none(self._run_text("metadata", "title"))
-        artist = _strip_or_none(self._run_text("metadata", "artist"))
-        album = _strip_or_none(self._run_text("metadata", "album"))
-        track_id = _strip_or_none(self._run_text("metadata", "mpris:trackid"))
-        source_url = _strip_or_none(self._run_text("metadata", "xesam:url"))
-        length_raw = self._run_text("metadata", "mpris:length")
-        duration_sec = _parse_duration_sec(length_raw)
+        metadata_raw = self._run_text(
+            "metadata",
+            "--format",
+            "{{title}}\n{{artist}}\n{{album}}\n{{mpris:length}}\n{{mpris:trackid}}\n{{xesam:url}}",
+        )
+        title, artist, album, duration_sec, track_id, source_url = _parse_metadata_fields(metadata_raw)
+        if _looks_like_spotify_ad(self.player, title, artist, album):
+            raise PlaybackUnavailableError(
+                "Spotify is reporting an advertisement instead of a track; lyrics will resume after playback returns to music."
+            )
 
         pos_raw = self._run_text("position")
         position_sec = _parse_float(pos_raw) or 0.0
-
-        listed = _list_players()
-        player_name = self.player or (listed[0] if len(listed) == 1 else None)
 
         return PlaybackSnapshot(
             title=title,
@@ -133,7 +162,7 @@ class LinuxPlayerctlBackend:
             position_sec=position_sec,
             duration_sec=duration_sec,
             state=state,
-            player_name=player_name,
+            player_name=self.player,
             track_id=track_id,
             source_url=source_url,
         )

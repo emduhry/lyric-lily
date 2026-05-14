@@ -3,10 +3,9 @@ from __future__ import annotations
 import os
 from typing import ClassVar
 
-from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, VerticalScroll
+from textual.containers import Container
 from textual.widgets import Footer, Static
 
 from lyric_lily.lyrics import resolve_lyrics
@@ -18,11 +17,13 @@ from lyric_lily.now_playing import (
     PlaybackSnapshot,
     default_backend,
 )
-from lyric_lily.ui.render import render_lyrics_window
+from lyric_lily.ui.lyric_view import LyricView
+from lyric_lily.themes import ThemePalette, load_theme
 
 
-def run_ui(*, local_only: bool, sync_offset_sec: float = 0.0) -> int:
-    LyricLilyApp(local_only=local_only, sync_offset_sec=sync_offset_sec).run()
+def run_ui(*, local_only: bool, sync_offset_sec: float = 0.0, theme_name: str | None = None) -> int:
+    theme = load_theme(theme_name)
+    LyricLilyApp(local_only=local_only, sync_offset_sec=sync_offset_sec, theme=theme).run()
     return 0
 
 
@@ -37,27 +38,27 @@ class LyricLilyApp(App[None]):
     CSS = """
     Screen {
         align: center middle;
-        background: $background;
+        background: transparent;
     }
     #panel {
         width: 90%;
         max-width: 100;
-        height: 90%;
-        border: round $accent;
-        padding: 1 2;
-        background: $surface;
+        height: auto;
+        max-height: 90%;
+        padding: 1 3;
+        background: transparent;
     }
-    #meta { margin-bottom: 1; color: $text-muted; }
-    #scroll { height: 1fr; }
+    #meta { margin-bottom: 2; }
     #lyrics { height: auto; }
-    #source { margin-top: 1; color: $text-muted; height: auto; }
+    #source { margin-top: 1; height: 1; }
     #error { color: $error; margin-bottom: 1; }
     """
 
-    def __init__(self, *, local_only: bool, sync_offset_sec: float = 0.0) -> None:
+    def __init__(self, *, local_only: bool, sync_offset_sec: float = 0.0, theme: ThemePalette) -> None:
         super().__init__()
         self._local_only = local_only
         self._sync_offset_sec = sync_offset_sec
+        self._theme = theme
         self._backend: NowPlayingBackend | None = None
         self._backend_error: str | None = None
         self._track_key: tuple[str | None, str | None, str | None, str | None] | str | None = None
@@ -70,12 +71,13 @@ class LyricLilyApp(App[None]):
         with Container(id="panel"):
             yield Static("", id="error")
             yield Static("", id="meta")
-            with VerticalScroll(id="scroll"):
-                yield Static("", id="lyrics")
+            yield LyricView(id="lyrics", theme=self._theme)
             yield Static("", id="source")
         yield Footer()
 
     def on_mount(self) -> None:
+        self.screen.styles.background = self._theme.background
+        self.query_one("#panel", Container).styles.background = self._theme.background
         try:
             self._backend = default_backend()
         except NotImplementedError as e:
@@ -114,6 +116,7 @@ class LyricLilyApp(App[None]):
                     self._lines = parse_synced_lrc(self._resolve.lrc_text)
                 else:
                     self._lines = []
+                self.query_one("#lyrics", LyricView).set_lines(self._lines)
                 try:
                     fresh_snap = self._backend.read()
                 except PlaybackUnavailableError:
@@ -130,18 +133,18 @@ class LyricLilyApp(App[None]):
     def _apply_error_only(self) -> None:
         err = self.query_one("#error", Static)
         meta = self.query_one("#meta", Static)
-        lyrics = self.query_one("#lyrics", Static)
+        lyrics = self.query_one("#lyrics", LyricView)
         src = self.query_one("#source", Static)
         if self._last_error:
             err.update(self._last_error)
             meta.update("")
-            lyrics.update("")
+            lyrics.show_message(self._last_error)
             src.update("")
 
     def _apply_lyrics(self, snap: PlaybackSnapshot) -> None:
         err = self.query_one("#error", Static)
         meta = self.query_one("#meta", Static)
-        lyrics = self.query_one("#lyrics", Static)
+        lyrics = self.query_one("#lyrics", LyricView)
         src = self.query_one("#source", Static)
         err.update("")
 
@@ -157,31 +160,26 @@ class LyricLilyApp(App[None]):
         if self._sync_offset_sec:
             pos += f" (lyrics {adjusted_position_sec:.1f}s)"
         bits.append(f"{snap.state.value} · {pos}")
-        meta.update(" · ".join(bits))
+        meta.update(" · ".join(bits), style=self._theme.meta)
 
         res = self._resolve
         if not res:
-            lyrics.update("")
+            lyrics.show_message("")
             src.update("")
             return
 
-        src.update(res.headline)
+        src.update(res.headline, style=self._theme.source)
 
         if not res.found or not res.lrc_text:
-            lyrics.update(Text(res.headline, style="yellow"))
+            lyrics.show_message(res.headline)
             return
 
         if not self._lines:
-            lyrics.update(
-                Text(
-                    "Lyrics file had no parseable synced [mm:ss] lines.",
-                    style="yellow",
-                )
-            )
+            lyrics.show_message("Lyrics file had no parseable synced [mm:ss] lines.")
             return
 
         idx = line_index_at(self._lines, adjusted_position_sec)
-        lyrics.update(render_lyrics_window(self._lines, idx))
+        lyrics.set_active(idx)
 
     def action_quit(self) -> None:
         self.exit()
